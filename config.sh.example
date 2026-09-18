@@ -1,0 +1,37 @@
+# Per-testbed configuration. Copy to config.sh and edit; every script sources it
+# when present. config.sh is gitignored so each machine keeps its own values.
+#
+#   cp config.sh.example config.sh
+#
+# Anything set in the environment still wins over these, so a one-off run can
+# override without editing the file:
+#
+#   NUM_THREADS=32 ./scripts/deploy-nixlbench.sh
+
+# ------------------------------------------------------------------------ pod
+
+POD_NAME="${POD_NAME:-nixlbench-cxl}"
+NAMESPACE="${NAMESPACE:-default}"
+
+# Node to pin the pod to. Leave unset to be prompted with the cluster's node list.
+# NODE="worker01"
+
+# Host directory to mount for storage benchmarks. Must exist on that node and sit
+# on the device you intend to measure -- a real block device, not tmpfs or NFS, if
+# O_DIRECT is in play. Setting this rewrites the hostPath in the manifest.
+# HOST_PATH="/mnt/nvme0"
+
+# ------------------------------------------------------------------ benchmark
+
+# Target directory for storage runs, inside the mounted path above.
+# SSD_DIR="/mnt/nvme0/nixlbench"
+
+# Scenario defaults. See README for what each one does and for the constraint
+# total_buffer_size >= block_max * batch * threads.
+# BLOCK_MIN=1048576            # 1 MiB
+# BLOCK_MAX=16777216           # 16 MiB
+# BATCH_SIZE=64
+# NUM_THREADS=8
+# TOTAL_BUFFER_SIZE=8589934592 # 8 GiB per process
+# NUM_ITER=256
+# WARMUP_ITER=32
