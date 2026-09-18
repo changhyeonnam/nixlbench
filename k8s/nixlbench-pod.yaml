@@ -1,0 +1,59 @@
+# nixlbench workbench pod.
+#
+# Long-running (sleep infinity) rather than one-shot, so benchmarks are driven one
+# at a time with `kubectl exec` and the environment can be inspected between runs.
+#
+# Apply directly:
+#   kubectl apply -f k8s/nixlbench-pod.yaml
+# Or with overrides:
+#   NODE=gpu01 HOST_PATH=/mnt/nvme-gpu1 ./scripts/deploy-pod.sh
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nixlbench-cxl
+  namespace: default
+  labels:
+    app: nixlbench-cxl
+spec:
+  restartPolicy: Never
+  # Pinned to the node that has both the CXL memory node and the NVMe target.
+  nodeSelector:
+    kubernetes.io/hostname: gpu01
+  securityContext:
+    # io_uring_setup is blocked by the RuntimeDefault seccomp profile, which kubelet
+    # applies by default on some clusters. --posix_api_type URING needs it unconfined.
+    seccompProfile:
+      type: Unconfined
+  containers:
+    - name: nixlbench
+      image: changhyeonnam/nixlbench:latest
+      # The tag is overwritten in place on every rebuild, so a cached copy on the
+      # node may be stale. Only changed layers transfer; the large ones stay cached.
+      imagePullPolicy: Always
+      command: ["sleep", "infinity"]
+      resources:
+        # Requests deliberately differ from limits. A Guaranteed-QoS pod can be
+        # handed an exclusive cpuset by the static CPU manager policy, which would
+        # leave --cpunodebind with no CPUs to bind to.
+        requests:
+          cpu: "8"
+          memory: 16Gi
+        limits:
+          # CXL pages count against the cgroup memory limit like any other page, so
+          # this must exceed nixlbench's --total_buffer_size (8 GiB by default) with
+          # headroom, or the pod is OOMKilled mid-run.
+          memory: 64Gi
+          # No GPU is requested: the POSIX backend with --initiator_seg_type DRAM
+          # never calls cudaSetDevice, and this is a shared cluster. Uncomment the
+          # line below only if a run needs VRAM or a CUDA-backed plugin.
+          # nvidia.com/gpu: 1
+      volumeMounts:
+        - name: nvme
+          mountPath: /mnt/nvme-gpu1
+  volumes:
+    # hostPath, not an emptyDir: the benchmark must hit the real NVMe device.
+    # An emptyDir would measure the container overlay filesystem instead.
+    - name: nvme
+      hostPath:
+        path: /mnt/nvme-gpu1
+        type: Directory
