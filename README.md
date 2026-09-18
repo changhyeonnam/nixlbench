@@ -139,7 +139,7 @@ run this scenario? [Y/n]:
 
 ---
 
-Step 6의 선택에 따라 갈립니다. `[3]` 은 A와 같고 source 노드만 고릅니다.
+Step 6의 선택에 따라 A, B, C 로 갈립니다.
 
 ## A. memory → memory
 
@@ -250,6 +250,8 @@ plan:
 run it? [y/N]:
 ```
 
+계획을 확인하고 `y` 로 실행합니다.
+
 ### B-3. 실행
 
 ```
@@ -264,6 +266,70 @@ Block Size (B)   Batch Size   B/W (GB/Sec)   Avg Lat. (us)   ...
 ```
 
 출력이 바로 화면에 나옵니다.
+
+## C. memory → GPU
+
+### C-1. source 노드 선택
+
+```
+NUMA nodes:
+  [1] node 0   cpus: 144 (0-71,144-215)   free: 793916 MB
+  [2] node 1   cpus: 144 (72-143,216-287)   free: 885478 MB
+
+source node (initiator buffer, local DRAM) [1-2]: 1
+source: node 0
+```
+
+source 노드를 고릅니다. target 은 pod 에 붙은 GPU 입니다.
+
+### C-2. 실행 계획 확인
+
+```
+plan:
+  rank 0 (initiator)  DRAM on node 0
+  rank 1 (target)     GPU (VRAM)
+  both processes      numactl --cpunodebind=0
+  backend             UCX (same host)
+  op                  WRITE, then READ
+  buffer              8589934592 bytes per process
+  etcd                started inside the pod at http://127.0.0.1:2379
+
+run it? [y/N]:
+```
+
+계획을 확인하고 `y` 로 실행합니다.
+
+### C-3. 실행
+
+```
+############################## op=WRITE ##############################
+----------- WRITE rank 0 (initiator: DRAM node 0), live -----------
+launching rank 0 on node 0...
+launching rank 1 (target: GPU (VRAM))...
+...
+WRITE exit codes: rank0=0 rank1=0
+
+############################## op=READ ##############################
+----------- READ rank 0 (initiator: DRAM node 0), live -----------
+...
+Target seg type (--target_seg_type=[DRAM,VRAM])             : VRAM
+Op type (--op_type=[READ,WRITE])                            : READ
+...
+Block Size (B)   Batch Size   B/W (GB/Sec)   Avg Lat. (us)   ...
+1048576          64           36.366515      230.7           ...
+2097152          64           36.753729      456.5           ...
+4194304          64           36.891055      909.6           ...
+8388608          64           37.258284      1801.2          ...
+16777216         64           37.636937      3566.1          ...
+
+=========== READ rank 1 (target: GPU (VRAM)) ===========
+...
+
+READ exit codes: rank0=0 rank1=0
+done: WRITE and READ finished (exit 0)
+```
+
+rank 0 로그는 실시간으로, rank 1 로그는 종료 후 출력됩니다.
 
 ## 시나리오 파라미터
 
@@ -289,18 +355,6 @@ Block Size (B)   Batch Size   B/W (GB/Sec)   Avg Lat. (us)   ...
 | `--storage_enable_direct` | O_DIRECT 로 페이지 캐시를 우회합니다 |
 | `--posix_kernel_queue_size` | AIO/URING 커널 큐 깊이입니다 |
 
-## 검증
-
-실행 중에 다른 셸에서 아래 명령으로 확인합니다.
-
-```bash
-kubectl exec <pod> -- bash -c 'for p in $(pgrep nixlbench); do numastat -p $p | tail -5; done'
-```
-
-RSS 가 source 노드와 target 노드에 각각 잡혀 있으면 됩니다.
-
-대조군은 같은 노드(source = target)로 한 번 더 돌려 비교합니다.
-
 ## 정리
 
 ```bash
@@ -313,4 +367,3 @@ RSS 가 source 노드와 target 노드에 각각 잡혀 있으면 됩니다.
 
 - `--membind` 은 대상 노드 용량이 부족하면 OOM 으로 죽습니다
 - 버퍼를 키우면 pod `limits.memory` 도 같이 키웁니다
-- `--use_hugepages` 는 쓰지 않습니다
