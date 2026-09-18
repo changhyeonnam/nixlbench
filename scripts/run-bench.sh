@@ -363,6 +363,8 @@ for op in WRITE READ; do
     [ \$rc0 -eq 0 ] && [ \$rc1 -eq 0 ] || overall=1
 done
 
+echo
+echo "done: WRITE and READ finished (exit \$overall)"
 exit \$overall
 EOF
 
@@ -416,5 +418,7 @@ EOF
             overall=1
         fi
     done
+    echo
+    echo "done: WRITE and READ finished (exit ${overall})"
     exit "${overall}"
 fi
