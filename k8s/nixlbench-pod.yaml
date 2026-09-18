@@ -6,7 +6,7 @@
 # Apply directly:
 #   kubectl apply -f k8s/nixlbench-pod.yaml
 # Or with overrides:
-#   NODE=gpu01 HOST_PATH=/mnt/nvme-gpu1 ./scripts/deploy-pod.sh
+#   NODE=<node> HOST_PATH=<mount point> ./scripts/deploy-nixlbench.sh
 apiVersion: v1
 kind: Pod
 metadata:
@@ -16,9 +16,12 @@ metadata:
     app: nixlbench-cxl
 spec:
   restartPolicy: Never
-  # Pinned to the node that has both the CXL memory node and the NVMe target.
+  # scripts/deploy-nixlbench.sh overwrites this with the node you select, so the value
+  # here only matters when applying the manifest directly with kubectl. It is left
+  # deliberately invalid: a wrong node silently measures the wrong hardware, while an
+  # unschedulable pod says so in its events.
   nodeSelector:
-    kubernetes.io/hostname: gpu01
+    kubernetes.io/hostname: SET_ME
   securityContext:
     # io_uring_setup is blocked by the RuntimeDefault seccomp profile, which kubelet
     # applies by default on some clusters. --posix_api_type URING needs it unconfined.
@@ -27,9 +30,10 @@ spec:
   containers:
     - name: nixlbench
       image: changhyeonnam/nixlbench:latest
-      # The tag is overwritten in place on every rebuild, so a cached copy on the
-      # node may be stale. Only changed layers transfer; the large ones stay cached.
-      imagePullPolicy: Always
+      # IfNotPresent: the image is tens of GB, so re-checking the registry on every
+      # pod creation is not worth it. After republishing the same tag, delete the
+      # cached copy on the node (or use a new tag) to pick the new one up.
+      imagePullPolicy: IfNotPresent
       command: ["sleep", "infinity"]
       resources:
         # Requests deliberately differ from limits. A Guaranteed-QoS pod can be
@@ -43,17 +47,33 @@ spec:
           # this must exceed nixlbench's --total_buffer_size (8 GiB by default) with
           # headroom, or the pod is OOMKilled mid-run.
           memory: 64Gi
-          # No GPU is requested: the POSIX backend with --initiator_seg_type DRAM
-          # never calls cudaSetDevice, and this is a shared cluster. Uncomment the
-          # line below only if a run needs VRAM or a CUDA-backed plugin.
-          # nvidia.com/gpu: 1
+          # One GPU, even for DRAM-only runs. The nixlbench binary links libcuda.so.1,
+          # so the dynamic linker needs it before main() runs -- CUDA is never called
+          # on a DRAM path, but the process cannot start without the library. In
+          # Kubernetes that library arrives only when the container toolkit attaches a
+          # GPU, so the allocation buys a shared object rather than compute.
+          nvidia.com/gpu: 1
       volumeMounts:
         - name: nvme
-          mountPath: /mnt/nvme-gpu1
+          mountPath: /mnt/nixlbench-data
+        - name: dshm
+          mountPath: /dev/shm
   volumes:
     # hostPath, not an emptyDir: the benchmark must hit the real NVMe device.
     # An emptyDir would measure the container overlay filesystem instead.
     - name: nvme
       hostPath:
-        path: /mnt/nvme-gpu1
-        type: Directory
+        # Set HOST_PATH (or edit here) to the mount point of the device you intend to
+        # measure. DirectoryOrCreate keeps a missing path from blocking the pod, so a
+        # Ready pod is not evidence that the intended device is mounted there.
+        path: /mnt/nixlbench-data
+        type: DirectoryOrCreate
+    # Containers get a 64 MiB /dev/shm and Kubernetes has no shm-size field, so the
+    # only way to enlarge it is to mount a memory-backed emptyDir over it. UCX moves
+    # same-host traffic through POSIX shared memory, and 64 MiB is far too small for
+    # multi-GiB buffers. sizeLimit is a cap, not a reservation, but whatever is used
+    # counts against the container's memory limit above.
+    - name: dshm
+      emptyDir:
+        medium: Memory
+        sizeLimit: 32Gi
