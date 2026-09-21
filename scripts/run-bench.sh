@@ -180,7 +180,7 @@ echo
 # Both directions always run, WRITE first: on the storage path that leaves the
 # target file populated before READ reads it, and having the pair side by side is
 # what makes a result interpretable.
-echo "op: WRITE 먼저 실행하고, 이어서 READ 를 진행하겠습니다."
+echo "op: WRITE first, then READ."
 
 describe_scenario
 echo
@@ -374,7 +374,7 @@ else
     echo "nixlbench treats --filepath as a DIRECTORY and creates"
     echo "nixlbench_posix_test_file_* inside it, so the directory must exist."
     echo
-    read -r -p "target directory (default: ${SSD_DIR}, 그대로 쓰려면 엔터): " answer
+    read -r -p "target directory (default: ${SSD_DIR}, Enter to keep): " answer
     run_dir="${answer:-${SSD_DIR}}"
     echo "target: ${run_dir}"
     echo

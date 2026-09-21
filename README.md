@@ -1,23 +1,23 @@
 # nixlbench on Kubernetes
 
-[nixlbench](https://github.com/ai-dynamo/nixl/tree/main/benchmark/nixlbench) 를 Kubernetes pod에서
-돌려 **NUMA 노드 간 메모리 전송**, **스토리지 I/O**, **호스트 메모리에서 GPU로의 전송** 대역폭을
-측정합니다.
+Runs [nixlbench](https://github.com/ai-dynamo/nixl/tree/main/benchmark/nixlbench) in a Kubernetes
+pod to measure bandwidth for **memory transfers between NUMA nodes**, **storage I/O**, and
+**host memory to GPU** transfers.
 
-## 실행
+## Run
 
 ```bash
 ./scripts/deploy-nixlbench.sh
 ```
 
-이걸 실행시키면 됩니다. 아래는 순서대로 나오는 출력이고, 값은 클러스터에 따라 다릅니다.
+Run this. Below is the output you will see in order; values depend on the cluster.
 
-pod은 GPU 1개를 할당받습니다. `nixlbench` 가 `libcuda.so.1` 에 링크되어 있어 DRAM 전용 경로라도
-없으면 실행되지 않기 때문이고, 연산에는 쓰지 않습니다.
+The pod requests one GPU. `nixlbench` links `libcuda.so.1`, so it does not start without one even
+on a DRAM-only path. The GPU is not used for compute.
 
-### Step 1. 기존 pod 확인
+### Step 1. Existing pod check
 
-pod이 이미 있을 때만 나옵니다.
+Shown only if the pod already exists.
 
 ```
 pod nixlbench-cxl already exists on node worker01.
@@ -31,9 +31,9 @@ needs a delete and recreate. Only the container image can be updated in place.
 select [1-2]:
 ```
 
-매니페스트를 고쳤으면 `2`, 벤치만 다시 돌리면 `1` 을 고릅니다.
+Choose `2` if you changed the manifest, `1` to just rerun the benchmark.
 
-### Step 2. 노드 선택
+### Step 2. Node selection
 
 ```
 cluster nodes:
@@ -48,9 +48,9 @@ select node [1-2]: 1
 node: worker01
 ```
 
-노드를 고릅니다.
+Pick the node.
 
-### Step 3. SSD 마운트 경로
+### Step 3. SSD mount path
 
 ```
 SSD mount path: the directory the device is actually mounted on (check with lsblk).
@@ -59,9 +59,9 @@ path [/mnt/nixlbench-data]: /mnt/nvme0
 storage: /mnt/nvme0
 ```
 
-디바이스가 마운트된 경로를 작성합니다.
+Enter the path where the device is mounted.
 
-### Step 4. 배포와 Ready 대기
+### Step 4. Deploy and wait for Ready
 
 ```
 pod/nixlbench-cxl created
@@ -74,9 +74,9 @@ NAME            READY   STATUS    RESTARTS   AGE   IP            NODE       ...
 nixlbench-cxl   1/1     Running   0          8s    10.233.95.60  worker01   ...
 ```
 
-이미지 pull에 5~10분 걸릴 수 있습니다. 이미지가 있으면 바로 실행됩니다.
+The image pull can take 5-10 minutes. If the image is already on the node it starts right away.
 
-### Step 5. NUMA 토폴로지
+### Step 5. NUMA topology
 
 ```
 NUMA topology inside the pod:
@@ -93,9 +93,10 @@ NUMA topology inside the pod:
     free: 885546 MB
 ```
 
-다음 단계에서 고를 노드 번호를 확인합니다. `cpus: none` 은 CPU 없는 메모리 전용 노드(CXL)입니다.
+Note the node numbers to choose from in the next step. `cpus: none` marks a CPU-less,
+memory-only node (CXL).
 
-### Step 6. 측정 모드 선택
+### Step 6. Measurement mode
 
 ```
 what to measure (source is always host memory):
@@ -109,12 +110,12 @@ what to measure (source is always host memory):
 
 select target [1-3]:
 
-op: WRITE 먼저 실행하고, 이어서 READ 를 진행하겠습니다.
+op: WRITE first, then READ.
 ```
 
-측정 모드를 고릅니다. 입력한 시나리오에 맞게 WRITE, READ 를 순서대로 동작시킵니다.
+Pick the mode. WRITE runs first, then READ, with the scenario you enter.
 
-### Step 7. 시나리오 확인
+### Step 7. Scenario
 
 ```
 scenario:
@@ -135,15 +136,15 @@ scenario:
 run this scenario? [Y/n]:
 ```
 
-엔터는 수락, `n` 은 항목별 입력입니다. 파라미터 의미는 [시나리오 파라미터](#시나리오-파라미터) 참조.
+Enter accepts. `n` prompts for each value. See [Scenario parameters](#scenario-parameters).
 
 ---
 
-Step 6의 선택에 따라 A, B, C 로 갈립니다.
+The flow now splits into A, B or C depending on Step 6.
 
 ## A. memory → memory
 
-### A-1. source·target 노드 선택
+### A-1. Source and target node
 
 ```
 NUMA nodes:
@@ -161,7 +162,7 @@ target node (e.g. the CXL node) [1-2]: 2
 target: node 1
 ```
 
-source 노드와 target 노드를 고릅니다. 같은 노드를 고르면 로컬 기준값 실행입니다.
+Pick the source and target nodes. Choosing the same node is the local baseline run.
 
 ```
 note: both buffers are on node 0, so this is the LOCAL BASELINE run.
@@ -169,7 +170,7 @@ note: both buffers are on node 0, so this is the LOCAL BASELINE run.
       Keep this result: the cross-node number means nothing without it.
 ```
 
-### A-2. 실행 계획 확인
+### A-2. Plan
 
 ```
 plan:
@@ -188,9 +189,9 @@ while this runs, verify placement from another shell:
 run it? [y/N]:
 ```
 
-계획을 확인하고 `y` 로 실행합니다.
+Check the plan and run with `y`.
 
-### A-3. 실행
+### A-3. Run
 
 ```
 starting etcd...
@@ -220,24 +221,24 @@ WRITE exit codes: rank0=0 rank1=0
 ...
 ```
 
-rank 0 로그는 실시간으로, rank 1 로그는 종료 후 출력됩니다.
-`UCX ERROR failed to get interface index for <nic>: No such device` 는 무시해도 됩니다.
+The rank 0 log streams live; the rank 1 log is printed when it finishes.
+`UCX ERROR failed to get interface index for <nic>: No such device` can be ignored.
 
 ## B. memory → storage
 
-### B-1. 대상 디렉터리
+### B-1. Target directory
 
 ```
 nixlbench treats --filepath as a DIRECTORY and creates
 nixlbench_posix_test_file_* inside it, so the directory must exist.
 
-target directory (default: /mnt/nixlbench-data/nixlbench, 그대로 쓰려면 엔터):
+target directory (default: /mnt/nixlbench-data/nixlbench, Enter to keep):
 target: /mnt/nixlbench-data/nixlbench
 ```
 
-대상 디렉터리를 작성합니다. 엔터는 기본값입니다.
+Enter the target directory. Enter keeps the default.
 
-### B-2. 실행 계획 확인
+### B-2. Plan
 
 ```
 plan:
@@ -250,9 +251,9 @@ plan:
 run it? [y/N]:
 ```
 
-계획을 확인하고 `y` 로 실행합니다.
+Check the plan and run with `y`.
 
-### B-3. 실행
+### B-3. Run
 
 ```
 ############################## op=WRITE ##############################
@@ -265,11 +266,11 @@ Block Size (B)   Batch Size   B/W (GB/Sec)   Avg Lat. (us)   ...
 ...
 ```
 
-출력이 바로 화면에 나옵니다.
+Output appears directly on screen.
 
 ## C. memory → GPU
 
-### C-1. source 노드 선택
+### C-1. Source node
 
 ```
 NUMA nodes:
@@ -280,9 +281,9 @@ source node (initiator buffer, local DRAM) [1-2]: 1
 source: node 0
 ```
 
-source 노드를 고릅니다. target 은 pod 에 붙은 GPU 입니다.
+Pick the source node. The target is the GPU attached to the pod.
 
-### C-2. 실행 계획 확인
+### C-2. Plan
 
 ```
 plan:
@@ -297,9 +298,9 @@ plan:
 run it? [y/N]:
 ```
 
-계획을 확인하고 `y` 로 실행합니다.
+Check the plan and run with `y`.
 
-### C-3. 실행
+### C-3. Run
 
 ```
 ############################## op=WRITE ##############################
@@ -329,41 +330,41 @@ READ exit codes: rank0=0 rank1=0
 done: WRITE and READ finished (exit 0)
 ```
 
-rank 0 로그는 실시간으로, rank 1 로그는 종료 후 출력됩니다.
+The rank 0 log streams live; the rank 1 log is printed when it finishes.
 
-## 시나리오 파라미터
+## Scenario parameters
 
-| 파라미터 | 기본값 | 의미 |
+| Parameter | Default | Meaning |
 |---|---|---|
-| block size sweep | 1 MiB ~ 16 MiB | 전송 1건당 크기 |
-| batch size | 64 | 한 번에 제출하는 descriptor 수 |
-| threads | 8 | 병렬도 |
-| buffer per process | 8 GiB | 프로세스당 버퍼. `block_max × batch × threads` 이상이어야 합니다 |
-| iterations | 256 (+32 warmup) | 측정 반복 수 |
+| block size sweep | 1 MiB ~ 16 MiB | size of one transfer |
+| batch size | 64 | descriptors submitted at once |
+| threads | 8 | parallelism |
+| buffer per process | 8 GiB | per-process buffer; must be at least `block_max × batch × threads` |
+| iterations | 256 (+32 warmup) | measured repetitions |
 
-## 플래그별 설명
+## Flags
 
-| 플래그 | 의미 |
+| Flag | Meaning |
 |---|---|
-| `--membind=N` | 메모리를 노드 N에만 할당합니다 |
-| `--preferred=N` | 노드 N을 우선하고, 부족하면 다른 노드를 씁니다 |
-| `--cpunodebind=N` | 스레드를 노드 N의 CPU에서 실행합니다 |
-| `--initiator_seg_type DRAM` | initiator 버퍼를 호스트 메모리에 둡니다 |
-| `--target_seg_type DRAM\|VRAM` | target 버퍼를 호스트 메모리 또는 GPU 메모리에 둡니다 |
-| `--filepath DIR` | 테스트 파일을 만들 디렉터리입니다 |
-| `--posix_api_type URING` | io_uring 을 씁니다. `AIO`, `POSIXAIO` 도 가능합니다 |
-| `--storage_enable_direct` | O_DIRECT 로 페이지 캐시를 우회합니다 |
-| `--posix_kernel_queue_size` | AIO/URING 커널 큐 깊이입니다 |
+| `--membind=N` | allocate memory only on node N |
+| `--preferred=N` | prefer node N, fall back to others when full |
+| `--cpunodebind=N` | run threads on node N's CPUs |
+| `--initiator_seg_type DRAM` | put the initiator buffer in host memory |
+| `--target_seg_type DRAM\|VRAM` | put the target buffer in host or GPU memory |
+| `--filepath DIR` | directory where test files are created |
+| `--posix_api_type URING` | use io_uring; `AIO` and `POSIXAIO` also work |
+| `--storage_enable_direct` | bypass the page cache with O_DIRECT |
+| `--posix_kernel_queue_size` | AIO/URING kernel queue depth |
 
-## 정리
+## Cleanup
 
 ```bash
 ./scripts/deploy-nixlbench.sh --delete
 ```
 
-테스트 파일까지 지우려면 pod 삭제 전에 `kubectl exec <pod> -- rm -rf <ssd_dir>` 을 실행합니다.
+To remove the test files as well, run `kubectl exec <pod> -- rm -rf <ssd_dir>` before deleting the pod.
 
-## 주의사항
+## Notes
 
-- `--membind` 은 대상 노드 용량이 부족하면 OOM 으로 죽습니다
-- 버퍼를 키우면 pod `limits.memory` 도 같이 키웁니다
+- `--membind` dies with OOM if the target node runs out of memory
+- When you raise the buffer, raise the pod `limits.memory` with it
